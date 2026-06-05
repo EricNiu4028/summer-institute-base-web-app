@@ -26,6 +26,20 @@ class App < Sinatra::Base
     end.sort_by(&:to_s)
   end
 
+  def accounts
+    Process.groups.map do |gid|
+      Etc.getgrgid(gid).name
+    end.select do |grname|
+      grname.start_with? 'P'
+    end
+  end
+
+  def blend_files
+    Dir.glob("#{__dir__}/blend_files/*.blend").map do |file|
+    File.basename(file)
+    end
+  end
+
   get '/examples' do
     erb(:examples)
   end
@@ -51,6 +65,7 @@ class App < Sinatra::Base
 
   get '/projects/:name' do
     @directory = Pathname.new("#{projects_root}/#{params[:name]}")
+    @project_name = @directory.basename.to_s.gsub('_', ' ').capitalize
 
     if params[:name] == 'new'
       erb(:new_project)
