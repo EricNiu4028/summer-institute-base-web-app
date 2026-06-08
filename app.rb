@@ -6,7 +6,7 @@ require 'logger'
 # App is the main application where all your logic & routing will go
 class App < Sinatra::Base
   set :erb, escape_html: true
-  enable :sessions
+  enable :session
   set :host_authorization, { permitted_hosts: ['ondemand.osc.edu'] }
 
   attr_reader :logger
@@ -66,6 +66,8 @@ class App < Sinatra::Base
   get '/projects/:name' do
     @directory = Pathname.new("#{projects_root}/#{params[:name]}")
     @project_name = @directory.basename.to_s.gsub('_', ' ').capitalize
+    @flash = session.delete(:flash)
+    @images = Dir.glob("#{@directory}/*.png")
 
     if params[:name] == 'new'
       erb(:new_project)
@@ -75,6 +77,25 @@ class App < Sinatra::Base
       @flash = {danger: "The project '#{params[:name]}' does not exist"}
       redirect(url('/'))
     end
+  end
+
+  post '/render/frames' do
+    logger.info("rendering frames with #{params.inspect}")
+
+    blend_file = "#{__dir__}/blend_files/#{params[:blend_file]}"
+    walltime = format('%02d:00:00', params[:walltime])
+    dir = params[:project_directory]
+
+    args = ['-J', "blender-#{params[:blend_file]}", '--parsable', '-A', params[:account]]
+    args.concat ['--export', "BLEND_FILE_PATH=#{blend_file},OUTPUT_DIR=#{dir},FRAME_RANGE=#{params[:frame_range]}"]
+    args.concat ['-n', params[:num_cpus], '-N', '1', '-t', walltime, '-M', 'cardinal']
+    args.concat ['--output', "#{dir}/%j.out"]
+
+    output = `/bin/sbatch #{args.join(' ')}  #{__dir__}/scripts/render_frames.sh 2>&1`
+    job_id = output.strip.split(';').first
+
+    session[:flash] = { info: "submitted job #{job_id}" }
+    redirect(url("/projects/#{dir.split('/').last}"))
   end
 
   private
