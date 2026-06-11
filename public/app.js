@@ -51,7 +51,7 @@ function updateCarousel() {
 }
 
 
-
 jQuery(() => {
   updateCarousel();
 });
+

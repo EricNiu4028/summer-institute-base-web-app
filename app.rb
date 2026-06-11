@@ -67,7 +67,12 @@ class App < Sinatra::Base
     @directory = Pathname.new("#{projects_root}/#{params[:name]}")
     @project_name = @directory.basename.to_s.gsub('_', ' ').capitalize
     @flash = session.delete(:flash)
-    @images = Dir.glob("#{@directory}/*.png")
+
+    image_list = Dir.glob("#{@directory}/*.png")
+    @images = image_list unless image_list.empty?
+    
+    video_path = "#{@directory}/video.mp4"
+    @video = video_path if File.exist?(video_path)
 
     if params[:name] == 'new'
       erb(:new_project)
@@ -77,6 +82,8 @@ class App < Sinatra::Base
       @flash = {danger: "The project '#{params[:name]}' does not exist"}
       redirect(url('/'))
     end
+
+
   end
 
   post '/render/frames' do
@@ -96,6 +103,38 @@ class App < Sinatra::Base
 
     session[:flash] = { info: "submitted job #{job_id}" }
     redirect(url("/projects/#{dir.split('/').last}"))
+  end
+
+  post '/render/video' do
+    logger.info("Trying to render video with: #{params.inspect}")
+
+    walltime = format('%02d:00:00', params[:walltime])
+    frames_per_second = params[:frames_per_second]
+    dir = params[:project_directory]
+
+    args = ['-J', 'blender-video', '--parsable', '-A', params[:account]]
+    args.concat ['--export', "OUTPUT_DIR=#{dir},FRAMES_PER_SEC=#{frames_per_second}"]
+    args.concat ['-n', params[:num_cpus], '-N', '1', '-t', walltime, '-M', 'ascend']
+    args.concat ['--output', "#{dir}/%j.out"]
+
+    output = `/bin/sbatch #{args.join(' ')}  #{__dir__}/scripts/render_video.sh 2>&1`
+
+    job_id = output.strip.split(';').first
+
+    session[:flash] = { info: "submitted with params #{params}" }
+    redirect(url("/projects/#{dir.split('/').last}"))
+    
+
+  end
+
+  post '/delete' do
+    directory = Pathname.new("#{params[:project_directory]}")
+
+    Pathname.new(directory).rmtree
+    logger.info("Trying to delete directory: #{directory}")
+
+    session[:flash] = { info: "Deleted #{directory}" }
+    redirect(url('/'))
   end
 
   private
